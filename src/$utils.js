@@ -3,9 +3,14 @@ const CURLY = /{{{?\s*([\s\S]*?)\s*}}}?/g;
 const VAR = /(?:^|[-*+^|%/&=\s])([a-zA-Z$_][\w$]*)(?:(?=$|[-*+^|%/&=\s]))/g;
 const ARGS = /([a-zA-Z$_][^\s=]*)\s*=\s*((["`'])(?:(?=(\\?))\4.)*?\3|{[^}]*}|\[[^\]]*]|\S+)/g;
 
-// $$1 = escape()
-// $$2 = extra blocks
-// $$3 = template values
+/**
+ * Generate 
+ * ```
+ * $$1 = escape()
+ * $$2 = extra blocks
+ * $$3 = template values
+ * ```
+ */
 export function gen(input, options) {
 	options = options || {};
 
@@ -44,8 +49,8 @@ export function gen(input, options) {
 				});
 			} else if (action === 'var') {
 				num = inner.indexOf('=');
-				tmp = inner.substring(0, num++).trim();
-				inner = inner.substring(num).trim().replace(/[;]$/, '');
+				tmp = inner.slice(0, num++).trim();
+				inner = inner.slice(num).trim().replace(/[;]$/, '');
 				txt += `var ${tmp}=${inner};`;
 			} else if (action === 'each') {
 				num = inner.indexOf(' as ');
@@ -53,8 +58,8 @@ export function gen(input, options) {
 				if (!~num) {
 					txt += `for(var i=0,$$a=${inner};i<$$a.length;i++){`;
 				} else {
-					tmp = inner.substring(0, num).trim();
-					inner = inner.substring(num + 4).trim();
+					tmp = inner.slice(0, num).trim();
+					inner = inner.slice(num + 4).trim();
 					let [item, idx='i'] = inner.replace(/[()\s]/g, '').split(','); // (item, idx?)
 					txt += `for(var ${idx}=0,${item},$$a=${tmp};${idx}<$$a.length;${idx}++){${item}=$$a[${idx}];`;
 				}
@@ -69,29 +74,26 @@ export function gen(input, options) {
 				if (inner) {
 					tmp = [];
 					// parse arguments, `defer=true` -> `{ defer: true }`
-					while (match = ARGS.exec(inner)) tmp.push(match[1] + ':' + match[2]);
-					inner = tmp.length ? '{' + tmp.join() + '}' : '';
+          let k = "", v = "";
+					while ([k, v] = ARGS.exec(inner) ?? []) tmp.push(`${k}:${v}`);
+					inner = tmp.length ? `{${tmp}}` : "";
 				}
 				inner = inner || '{}';
 				tmp = options.async ? 'await ' : '';
-				wip += '${' + tmp + '$$2.' + action + '(' + inner + ',$$2)}';
+				wip += `\${${tmp}$$2.${action}(${inner},$$2)}`;
 			} else {
 				throw new Error(`Unknown "${action}" block`);
 			}
 		} else if (char === '/') {
-			action = inner.substring(1);
+			action = inner.slice(1);
 			inner = stack.pop();
 			close();
 			if (action === inner) txt += '}';
 			else throw new Error(`Expected to close "${inner}" block; closed "${action}" instead`);
 		} else {
-			if (match[0].charAt(2) === '{') wip += '${' + inner + '}'; // {{{ raw }}}
-			else wip += '${$$1(' + inner + ')}';
-			if (options.loose) {
-				while (tmp = VAR.exec(inner)) {
-					initials.add(tmp[1]);
-				}
-			}
+			if (match[0].charAt(2) === '{') wip += `\${${inner}}`; // {{{ raw }}}
+			else wip += `\${$$1(${inner})}`;
+			while (options.loose && ([, tmp] = VAR.exec(inner) ?? [])) initials.add(tmp);
 		}
 	}
 
@@ -100,11 +102,11 @@ export function gen(input, options) {
 	}
 
 	if (last < input.length) {
-		wip += input.substring(last).replace(ENDLINES, '');
+		wip += input.slice(last).replace(ENDLINES, '');
 	}
 
 	close();
 
-	tmp = initials.size ? `{${ [...initials].join() }}=$$3,x` : ' x';
+	tmp = initials.size ? `{${[...initials]}}=$$3,x` : ' x';
 	return `var${tmp + txt}return x`;
 }
